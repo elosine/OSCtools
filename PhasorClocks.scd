@@ -1,92 +1,59 @@
 
-		// VARIABLES ///////////////////
-		var numpl = 2;
-		var proc = NetAddr("127.0.0.1", 12321);
-		var procfx = NetAddr("127.0.0.1", 12322);
-		var g0 = Group.new(s);
-		var g0b = Group.after(g0);
-		var g1 = Group.after(g0b);
-		var g2 = Group.after(g1);
-		//Score Index/Cursor
-		var scoreixbuf = Buffer.alloc(s, s.sampleRate*16);
-		var scoreixAbus = Bus.audio(s);
-		var scoreixKbus = Bus.control(s);
-		//Loop Index/Cursor
-		var loopixbuf = Buffer.alloc(s, s.sampleRate*16);
-		var loopixAbus = Bus.audio(s);
-		var loopixKbus = Bus.control(s);
-		//Sample Buffer
-		var liveprocbuf = Buffer.alloc(s, s.sampleRate*16);
-		var zerobuf = Buffer.alloc(s, s.sampleRate*16);
-		//Sample Bus
-		var sampbus = Bus.audio(s);
-		var scorerunfunc, scrctlwin, scrctlbut;
-		//Control Busses
-		var kbus = {Bus.control(s, 33)}!20;
-		var totalframes = 44100*16;
-		var freezebuf = Buffer.alloc(s, s.sampleRate*2); //buffer for freeze effect
-		var envbufs = SoundFile.collectIntoBuffers("/Users/jyang/GitHub/superimposition/Superimposition_Final_Score/grainEnv/*");
-		var playa = 0;
 
-		//SYNTH DEFS
-		SynthDef(\indexer, {
-			arg buf, spd=1, start=0, end=1, abus=99, kbus, t_tr=0, pos=0;
-			var index, indexnorm;
-			index = Phasor.ar(t_tr, BufRateScale.kr(buf)*spd, start*BufFrames.kr(buf), end*BufFrames.kr(buf), pos*BufFrames.kr(buf));
-			indexnorm = index.linlin(0.0, BufFrames.kr(buf), 0.0, 1.0);
-			Out.ar(abus, index);
-			Out.kr(kbus, indexnorm);
-		}).add;
+// VARIABLES ///////////////////
+//Groups
+~g0 = Group.new(s);
+~g1 = Group.after(g0b);
+~g2 = Group.after(g1);
+~cd=();
+//check if name exists in dictionary
+~cd.put(\bigJ, Dictionary.new);
+~cd[\bigJ].put(\kbus, Bus.control(s));
+~cd[\bigJ][\kbus]
+~cd[\bigJ].put(\abus, Bus.audio(s));
+~cd[\bigJ][\abus]
+~cd[\bigJ].put(\synth, Synth(\indexer, [\dur, 3.0, \abus, ~cd[\bigJ][\abus], \kbus, ~cd[\bigJ][\kbus]]));
+~cd[\bigJ][\synth]
 
+OSCdef(\mkclk, {|msg|
+	//make a new control and audio bus, add the index synth to index group
+	//register index number, maybe in a dictionary with a certain user defined name?
 
-		OSCdef(\getix, {|msg|
-			var pl = msg[1].asInteger;
-			scoreixKbus.get({ |val|
-				liveprocbuf.get( (val*(44100*16)).round, { |msg| procfx.sendMsg("/ix", pl, val.asFloat, msg.asFloat) });
-			});
-		}, "/getix");
+}, "/mkclk");
 
 
 
-
-		//Score IX //////////////////////////
-		OSCdef( \getscoreidx,{ scoreixKbus.get({arg val; proc.sendMsg("/scoreix", val)}) }, "/getscoreidx");
-		//FX
-		OSCdef(\getloopix, {|msg|
-			var pl = msg[1].asInteger;
-			loopixKbus.get({ |val| procfx.sendMsg("/loopix", pl, val.asFloat) });
-		}, "/getloopix");
-		OSCdef(\setix, {|msg|
-			var pl = msg[1].asInteger;
-			var start = msg[2].asFloat;
-			var end = msg[3].asFloat;
-			s.sendMsg(\n_free, 6000+pl);
-			s.sendMsg( \s_new, \indexer, 6000+pl, 0, g0.nodeID, \buf, loopixbuf.bufnum, \spd, 1, \start, start,
-				\end, end, \abus, loopixAbus.index, \kbus, loopixKbus.index);
-			s.sendMsg( \n_set, 5000+pl, \idxbus, loopixAbus.index);
-		}, "/setix");
-		OSCdef(\mainix, {|msg|
-			var pl = msg[1].asInteger;
-			s.sendMsg(\n_free, 6000+pl);
-			s.sendMsg( \n_set, 5000+pl, \idxbus, scoreixAbus.index );
-		}, "/mainix");
+//SYNTH DEFS
+SynthDef(\indexer, {
+	arg dur=3.0, spd=1.0, start=0.0, end=1.0, abus, kbus, t_tr=0, pos=0, samprate = 44100.0;
+	var index, indexnorm, numframes;
+	numframes = dur*samprate;
+	index = Phasor.ar(t_tr, spd, start*numframes, end*numframes, pos*numframes);
+	indexnorm = index.linlin(0.0, numframes, 0.0, 1.0);
+	Out.ar(abus, index);
+	Out.kr(kbus, indexnorm);
+}).add;
+a = Synth(\indexer, [\abus, ~iabus[0], \kbus, ~ikbus[0] ]);
 
 
-
-
-
-		OSCdef(\inpause, {|msg|
-			var pl = msg[4].asInteger;
-			switch( pl,
-				1, { s.sendMsg(\n_set, 4000, \buf, zerobuf.bufnum) },
-				0, {s.sendMsg(\n_set, 4000, \buf, liveprocbuf.bufnum) }
-			);
-		}, "/inpause");
 
 
 
 
 /*
+
+START W/CONTROL RATE AND MAKE STOPWATCH INTERFACE
+HOW TO CONFIGURE STOPWATCH?
+
+OSC ARRAY WITH CONTAINERS
+OR
+TEXT FILE WITH SETTINGS
+START/STOP/PAUSE/JUMP TO PLACE IN SCORE
+REPORT TIME CONTAINERS
+GUI TOOL THAT KEEPS TRACK OF ALL REGISTERED STOPWATCHES & CONTROLS
+
+
+AUDIO RATE
 HAVE A SLAVE PHASOR W/RESET & LATENCY ADJUSTMENT
 
 
